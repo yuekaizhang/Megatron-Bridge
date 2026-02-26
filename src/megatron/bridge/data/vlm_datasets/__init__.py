@@ -28,11 +28,13 @@ from megatron.bridge.data.vlm_datasets.collate import (
     nemotron_nano_v2_vl_collate_fn,
     phi4_mm_collate_fn,
     qwen2_5_collate_fn,
+    qwen2_audio_collate_fn,
 )
 from megatron.bridge.data.vlm_datasets.conversation_dataset import VLMConversationDataset
 from megatron.bridge.data.vlm_datasets.hf_dataset_makers import (
     make_cord_v2_dataset,
     make_cv17_dataset,
+    make_default_audio_dataset,
     make_llava_video_178k_dataset,
     make_medpix_dataset,
     make_raven_dataset,
@@ -49,6 +51,7 @@ __all__ = [
     "make_cord_v2_dataset",
     "make_medpix_dataset",
     "make_cv17_dataset",
+    "make_default_audio_dataset",
     "make_raven_dataset",
     "make_llava_video_178k_dataset",
     # Dataset types/providers
@@ -61,5 +64,6 @@ __all__ = [
     "COLLATE_FNS",
     "default_collate_fn",
     "qwen2_5_collate_fn",
+    "qwen2_audio_collate_fn",
     "phi4_mm_collate_fn",
 ]

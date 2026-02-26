@@ -59,6 +59,7 @@ from typing import Callable
 
 import megatron.bridge.recipes as recipes
 from megatron.bridge.models.qwen_vl.qwen3_vl_step import forward_step as qwen3_vl_forward_step
+from megatron.bridge.training.audio_lm_step import forward_step as audio_lm_forward_step
 from megatron.bridge.training.config import ConfigContainer
 from megatron.bridge.training.finetune import finetune
 from megatron.bridge.training.gpt_step import forward_step as gpt_forward_step
@@ -73,6 +74,7 @@ STEP_FUNCTIONS: dict[str, Callable] = {
     "vlm_step": vlm_forward_step,
     "qwen3_vl_step": qwen3_vl_forward_step,
     "llava_step": llava_forward_step,
+    "audio_lm_step": audio_lm_forward_step,
 }
 
 TRAIN_MODES = {

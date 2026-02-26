@@ -24,7 +24,7 @@ from PIL import Image  # noqa: F401  # may be used downstream by processors
 
 from megatron.bridge.data.datasets.utils import IGNORE_INDEX
 from megatron.bridge.data.vlm_datasets.token_utils import extract_skipped_token_ids
-from megatron.bridge.training.utils.visual_inputs import Qwen2_5_VLVisualInputs
+from megatron.bridge.training.utils.visual_inputs import Qwen2_5_VLVisualInputs, Qwen2AudioInputs
 
 
 # Local message used when optional qwen_vl_utils dependency is missing
@@ -507,11 +507,79 @@ def default_collate_fn(examples: list, processor) -> dict[str, torch.Tensor]:
     return batch
 
 
+def qwen2_audio_collate_fn(examples: list, processor) -> dict[str, torch.Tensor]:
+    """Collate function for Qwen2-Audio model."""
+    skipped_tokens = extract_skipped_token_ids(processor)
+
+    texts = []
+    audio_inputs = []
+    for example in examples:
+        text = processor.apply_chat_template(example["conversation"], tokenize=False)
+        texts.append(text)
+        audio = example.get("audio")
+        if audio is not None:
+            if isinstance(audio, tuple):
+                audio_inputs.append(audio[0])  # (array, sr) -> array
+            elif isinstance(audio, dict):
+                audio_inputs.append(audio["array"])
+            else:
+                audio_inputs.append(audio)
+
+    batch = processor(
+        text=texts,
+        audio=audio_inputs if audio_inputs else None,
+        return_tensors="pt",
+        padding=True,
+    )
+
+    # Build labels: shift input_ids by 1 and fill last with -100
+    labels = batch["input_ids"].clone()[:, 1:]
+    labels = torch.cat([labels, -100 * torch.ones_like(labels[:, :1])], dim=1)
+    labels[torch.isin(labels, skipped_tokens)] = -100
+    batch["labels"] = labels
+
+    # Ensure position_ids exist
+    if "position_ids" not in batch:
+        batch_size, seq_len = batch["input_ids"].shape
+        batch["position_ids"] = (
+            torch.arange(seq_len, device=batch["input_ids"].device)
+            .unsqueeze(0)
+            .expand(batch_size, -1)
+            .clone()
+            .contiguous()
+        )
+
+    # Build loss mask using search-based masking for assistant turns
+    loss_masks = [
+        create_multiturn_loss_mask_by_search(example, input_ids, processor, skipped_tokens)
+        for example, input_ids in zip(examples, batch["input_ids"])
+    ]
+    loss_mask_t = torch.tensor(loss_masks, dtype=torch.float, device=batch["input_ids"].device)
+    # Shift loss mask to align with next-token labels timeline
+    loss_mask_t = torch.cat([loss_mask_t[:, 1:], torch.zeros_like(loss_mask_t[:, :1])], dim=1)
+    # Enforce label masking to match shifted loss_mask
+    batch["labels"] = batch["labels"].masked_fill(loss_mask_t == 0, -100)
+    batch["loss_mask"] = loss_mask_t
+
+    # Wrap audio tensors in Qwen2AudioInputs and attach as visual_inputs
+    visual_inputs = Qwen2AudioInputs(
+        input_features=batch.get("input_features"),
+        feature_attention_mask=batch.get("feature_attention_mask"),
+    )
+    for key in ("input_features", "feature_attention_mask"):
+        if key in batch:
+            del batch[key]
+    batch["visual_inputs"] = visual_inputs
+
+    return batch
+
+
 # Mapping of processor types to their collate functions
 COLLATE_FNS = {
     "Qwen2_5_VLProcessor": qwen2_5_collate_fn,
     "Qwen3VLProcessor": qwen2_5_collate_fn,
     "NemotronNanoVLV2Processor": nemotron_nano_v2_vl_collate_fn,
     "PixtralProcessor": ministral3_collate_fn,  # Ministral3 uses PixtralProcessor
+    "Qwen2AudioProcessor": qwen2_audio_collate_fn,
     "default": default_collate_fn,
 }
