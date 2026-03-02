@@ -508,9 +508,13 @@ def default_collate_fn(examples: list, processor) -> dict[str, torch.Tensor]:
 
 
 def qwen2_audio_collate_fn(examples: list, processor) -> dict[str, torch.Tensor]:
-    """Collate function for Qwen2-Audio model."""
-    skipped_tokens = extract_skipped_token_ids(processor)
+    """Collate function for Qwen2-Audio model.
 
+    Uses HF-compatible label construction:
+    - Backward search for assistant text spans (matching HF Trainer convention)
+    - No skipped_tokens masking on labels (model learns to predict EOS/im_end)
+    - Loss mask derived directly from active label positions
+    """
     texts = []
     audio_inputs = []
     for example in examples:
@@ -532,34 +536,57 @@ def qwen2_audio_collate_fn(examples: list, processor) -> dict[str, torch.Tensor]
         padding=True,
     )
 
-    # Build labels: shift input_ids by 1 and fill last with -100
-    labels = batch["input_ids"].clone()[:, 1:]
-    labels = torch.cat([labels, -100 * torch.ones_like(labels[:, :1])], dim=1)
-    labels[torch.isin(labels, skipped_tokens)] = -100
+    tokenizer = getattr(processor, "tokenizer", processor)
+    input_ids = batch["input_ids"]
+    batch_size, seq_len = input_ids.shape
+    pad_token_id = tokenizer.pad_token_id
+
+    # --- HF-compatible label construction ---
+    # Step 1: Build unshifted labels (same convention as HF Trainer)
+    hf_labels = input_ids.clone()
+
+    for i, example in enumerate(examples):
+        ids = input_ids[i].tolist()
+        assistant_texts = _gather_assistant_text_segments(example)
+
+        # Find assistant span using backward search (like HF's Qwen2AudioCollator)
+        found = -1
+        for asst_text in assistant_texts:
+            asst_token_ids = tokenizer(asst_text, add_special_tokens=False)["input_ids"]
+            span_len = len(asst_token_ids)
+            if span_len == 0:
+                continue
+            for start in range(len(ids) - span_len, -1, -1):
+                if ids[start : start + span_len] == asst_token_ids:
+                    found = start
+                    break
+            if found >= 0:
+                break
+
+        if found >= 0:
+            # Mask everything before the assistant span (prompt + special tokens)
+            hf_labels[i, :found] = IGNORE_INDEX
+        else:
+            warnings.warn(f"Could not find assistant span for example {i}, masking all labels")
+            hf_labels[i, :] = IGNORE_INDEX
+
+        # Mask padding tokens
+        if pad_token_id is not None:
+            hf_labels[i][input_ids[i] == pad_token_id] = IGNORE_INDEX
+
+    # Step 2: Shift labels for Megatron (labels[j] = hf_labels[j+1])
+    labels = hf_labels[:, 1:]
+    labels = torch.cat([labels, IGNORE_INDEX * torch.ones_like(labels[:, :1])], dim=1)
     batch["labels"] = labels
+
+    # Step 3: Derive loss_mask from active label positions
+    batch["loss_mask"] = (labels != IGNORE_INDEX).float()
 
     # Ensure position_ids exist
     if "position_ids" not in batch:
-        batch_size, seq_len = batch["input_ids"].shape
         batch["position_ids"] = (
-            torch.arange(seq_len, device=batch["input_ids"].device)
-            .unsqueeze(0)
-            .expand(batch_size, -1)
-            .clone()
-            .contiguous()
+            torch.arange(seq_len, device=input_ids.device).unsqueeze(0).expand(batch_size, -1).clone().contiguous()
         )
-
-    # Build loss mask using search-based masking for assistant turns
-    loss_masks = [
-        create_multiturn_loss_mask_by_search(example, input_ids, processor, skipped_tokens)
-        for example, input_ids in zip(examples, batch["input_ids"])
-    ]
-    loss_mask_t = torch.tensor(loss_masks, dtype=torch.float, device=batch["input_ids"].device)
-    # Shift loss mask to align with next-token labels timeline
-    loss_mask_t = torch.cat([loss_mask_t[:, 1:], torch.zeros_like(loss_mask_t[:, :1])], dim=1)
-    # Enforce label masking to match shifted loss_mask
-    batch["labels"] = batch["labels"].masked_fill(loss_mask_t == 0, -100)
-    batch["loss_mask"] = loss_mask_t
 
     # Wrap audio tensors in Qwen2AudioInputs and attach as visual_inputs
     visual_inputs = Qwen2AudioInputs(
