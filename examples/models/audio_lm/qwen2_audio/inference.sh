@@ -31,30 +31,30 @@ echo "Option 1: Direct inference from HuggingFace..."
 echo "Audio: ${AUDIO_URL_1}"
 echo ""
 
-uv run --no-sync python -m torch.distributed.run --nproc_per_node=1 examples/conversion/hf_to_megatron_generate_audio_lm.py \
-  --hf_model_path ${HF_MODEL} \
-  --audio_url "${AUDIO_URL_1}" \
-  --prompt "What's that sound?" \
-  --tp 1 \
-  --max_new_tokens 50
+# uv run --no-sync python -m torch.distributed.run --nproc_per_node=1 examples/conversion/hf_to_megatron_generate_audio_lm.py \
+#   --hf_model_path ${HF_MODEL} \
+#   --audio_url "${AUDIO_URL_1}" \
+#   --prompt "What's that sound?" \
+#   --tp 1 \
+#   --max_new_tokens 50
 
 # Option 2: Convert to Megatron format and run inference
 # Uncomment the following to test checkpoint conversion workflow
 
 echo ""
 echo "Option 2: Converting HF checkpoint to Megatron format..."
-# uv run python examples/conversion/convert_checkpoints.py import \
-#   --hf-model ${HF_MODEL} \
-#   --megatron-path ${MEGATRON_PATH}
+uv run --no-sync python examples/conversion/convert_checkpoints.py import \
+  --hf-model ${HF_MODEL} \
+  --megatron-path ${MEGATRON_PATH}
 
 # echo ""
 # echo "Running inference on converted checkpoint..."
-# uv run python -m torch.distributed.run examples/conversion/hf_to_megatron_generate_audio_lm.py \
-#   --hf_model_path ${HF_MODEL} \
-#   --megatron_model_path ${MEGATRON_PATH}/iter_0000000 \
-#   --audio_url "${AUDIO_URL_1}" \
-#   --prompt "What's that sound?" \
-#   --max_new_tokens 50
+uv run --no-sync python -m torch.distributed.run examples/conversion/hf_to_megatron_generate_audio_lm.py \
+  --hf_model_path ${HF_MODEL} \
+  --megatron_model_path ${MEGATRON_PATH}/iter_0000000 \
+  --audio_url "${AUDIO_URL_1}" \
+  --prompt "What's that sound?" \
+  --max_new_tokens 50
 
 echo ""
 echo "============================================"

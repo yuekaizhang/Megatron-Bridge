@@ -29,20 +29,30 @@
 #   HF_MODEL     — HuggingFace model path (default: Qwen/Qwen2-Audio-7B-Instruct)
 # ==============================================================================
 export PYTHONPATH=/workspace_yuekai/asr/Megatron-Bridge:$PYTHONPATH
+export TORCHDYNAMO_DISABLE=1
 
 set -euo pipefail
 
-WORKSPACE=${WORKSPACE:-/workspace}
+WORKSPACE=${WORKSPACE:-/workspace_yuekai/asr/Megatron-Bridge/examples/models/audio_lm/qwen2_audio}
 NPROC=${NPROC:-8}
-HF_MODEL=${HF_MODEL:-/workspace_yuekai/HF/Qwen2-Audio-7B-Instruct}
+HF_MODEL=${HF_MODEL:-/workspace_yuekai/HF/Qwen2-Audio-7B}
 
 # Before training, set WANDB_API_KEY or disable wandb logging
 # export WANDB_API_KEY=<your_wandb_api_key>
 # export WANDB_MODE=disabled
 
 # Common configurations
-PRETRAINED_CHECKPOINT=${PRETRAINED_CHECKPOINT:-/workspace_yuekai/HF/Qwen2-Audio-7B-Instruct}
+MEGATRON_CKPT_DIR=${WORKSPACE}/megatron_ckpts/${MODEL_NAME:-qwen2_audio_7b}
 MODEL_NAME=qwen2_audio_7b
+
+# Convert HF checkpoint to Megatron format if not already done
+if [ ! -d "${MEGATRON_CKPT_DIR}/iter_0000000" ]; then
+    echo "Converting HF model to Megatron format..."
+    uv run --no-sync python examples/conversion/convert_checkpoints.py import \
+        --hf-model ${HF_MODEL} \
+        --megatron-path ${MEGATRON_CKPT_DIR}
+fi
+PRETRAINED_CHECKPOINT=${PRETRAINED_CHECKPOINT:-${MEGATRON_CKPT_DIR}}
 DATASET_NAME=default_audio
 SEQ_LENGTH=4096
 TRAIN_ITERS=2000
@@ -60,7 +70,7 @@ WANDB_PROJECT=megatron-bridge-${MODEL_NAME}
 MAKER_NAME=make_default_audio_dataset
 MAKER_DATASET=yuekai/aishell
 MAKER_SPLIT=test
-MAKER_PROMPT="Transcribe the audio clip."
+MAKER_PROMPT="Detect the language and recognize the speech: <|zh|>"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -119,7 +129,7 @@ run_via_finetune_script() {
         --config-file ${SCRIPT_DIR}/conf/qwen2_audio_override_example.yaml \
         model.tensor_model_parallel_size=${TP} \
         model.pipeline_model_parallel_size=${PP} \
-        checkpoint.save=${WORKSPACE}/results/${MODEL_NAME}_sft_tp${TP}_pp${PP} \
+        checkpoint.save=${WORKSPACE}/exp/${MODEL_NAME}_sft_tp${TP}_pp${PP} \
         logger.wandb_project=${WANDB_PROJECT} \
         logger.wandb_exp_name=${MODEL_NAME}_sft_tp${TP}_pp${PP}
 }
@@ -127,7 +137,7 @@ run_via_finetune_script() {
 # --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
-USE_FINETUNE_SCRIPT=false
+# USE_FINETUNE_SCRIPT=false
 USE_FINETUNE_SCRIPT=true
 for arg in "$@"; do
     case $arg in

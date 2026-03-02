@@ -16,17 +16,17 @@
 
 model:
   seq_length: 4096
-  freeze_language_model: true
-  freeze_audio_model: true
+  freeze_language_model: false
+  freeze_audio_model: false
   freeze_audio_projection: false
 
 train:
-  train_iters: 1200000
+  train_iters: 11250
   global_batch_size: 32
   micro_batch_size: 1
 
 validation:
-  eval_interval: 100    # validate every N training steps
+  eval_interval: 1000    # validate every N training steps
   eval_iters: 10        # number of batches per validation run
 
 optimizer:
@@ -39,7 +39,7 @@ scheduler:
 checkpoint:
   # Directory to save to. If null, no checkpoint will be saved.
   save: ???
-  save_interval: 100
+  save_interval: 1000
   save_optim: False
 
 logger:
@@ -52,7 +52,7 @@ dataset:
     path_or_dataset: "yuekai/aishell"
     subset: "train"
     split: "test"
-    prompt: "Transcribe the audio clip."
+    prompt: "Detect the language and recognize the speech: <|zh|>"
   # val_maker_kwargs overrides maker_kwargs when building the validation split
   val_maker_kwargs:
     subset: "dev"
