@@ -23,7 +23,7 @@ model:
 train:
   train_iters: 11250
   global_batch_size: 32
-  micro_batch_size: 1
+  micro_batch_size: 4
 
 validation:
   eval_interval: 1000    # validate every N training steps
@@ -59,9 +59,11 @@ dataset:
     split: "test"
   # skip test set evaluation at the end of training
   skip_test: true
+  # Enable in-batch sequence packing for better GPU utilization
+  pack_sequences_in_batch: true
 
 rng:
   seed: 42
 
 ddp:
-  grad_reduce_in_fp32: true
+  grad_reduce_in_fp32: false
