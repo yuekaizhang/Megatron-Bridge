@@ -112,7 +112,8 @@ def get_rope_index(
             remain_images, remain_videos, remain_audios = image_nums, video_nums, audio_nums
             multimodal_nums = image_nums + audio_nums if use_audio_in_video else image_nums + video_nums + audio_nums
             for _ in range(multimodal_nums):
-                st_idx = llm_pos_ids_list[-1].max() + 1 if llm_pos_ids_list else 0
+                non_empty = [t for t in llm_pos_ids_list if t.numel() > 0]
+                st_idx = non_empty[-1].max() + 1 if non_empty else 0
                 if (image_token_id in input_tokens or video_token_id in input_tokens) and (
                     remain_videos > 0 or remain_images > 0
                 ):
@@ -227,11 +228,13 @@ def get_rope_index(
                     remain_videos -= 1
                     remain_audios -= 1
 
-                st_idx = llm_pos_ids_list[-1].max() + 1 if llm_pos_ids_list else 0
+                non_empty = [t for t in llm_pos_ids_list if t.numel() > 0]
+                st_idx = non_empty[-1].max() + 1 if non_empty else 0
                 llm_pos_ids_list.append(torch.arange(eos_len).view(1, -1).expand(3, -1) + st_idx)
 
             if st < len(input_tokens):
-                st_idx = llm_pos_ids_list[-1].max() + 1 if llm_pos_ids_list else 0
+                non_empty = [t for t in llm_pos_ids_list if t.numel() > 0]
+                st_idx = non_empty[-1].max() + 1 if non_empty else 0
                 text_len = len(input_tokens) - st
                 llm_pos_ids_list.append(torch.arange(text_len).view(1, -1).expand(3, -1) + st_idx)
 

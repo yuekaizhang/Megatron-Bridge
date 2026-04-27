@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 from transformers import Qwen3OmniMoeForConditionalGeneration
+
+logger = logging.getLogger(__name__)
 
 from megatron.bridge.models.conversion.mapping_registry import MegatronMappingRegistry
 from megatron.bridge.models.conversion.model_bridge import MegatronModelBridge
@@ -40,9 +44,9 @@ class Qwen3OmniBridge(MegatronModelBridge):
     def provider_bridge(self, hf_pretrained: PreTrainedVLM) -> Qwen3OmniModelProvider:
         hf_config = hf_pretrained.config
         if getattr(hf_config, "enable_audio_output", False):
-            raise NotImplementedError(
-                "Qwen3-Omni talker/code2wav audio-output checkpoints are not supported yet. "
-                "Only thinker-side conversion/runtime is currently implemented."
+            logger.warning(
+                "Qwen3-Omni talker/code2wav audio-output is not supported yet; "
+                "converting thinker-side weights only. Talker/code2wav modules will be ignored."
             )
         thinker_config = hf_config.thinker_config
         talker_config = getattr(hf_config, "talker_config", None)
@@ -66,6 +70,7 @@ class Qwen3OmniBridge(MegatronModelBridge):
             moe_ffn_hidden_size=getattr(text_config, "moe_intermediate_size", None),
             num_attention_heads=text_config.num_attention_heads,
             num_query_groups=text_config.num_key_value_heads,
+            kv_channels=getattr(text_config, "head_dim", None),
             init_method_std=text_config.initializer_range,
             layernorm_epsilon=text_config.rms_norm_eps,
             gated_linear_unit=True,
@@ -74,7 +79,6 @@ class Qwen3OmniBridge(MegatronModelBridge):
             share_embeddings_and_output_weights=getattr(text_config, "tie_word_embeddings", False),
             vocab_size=text_config.vocab_size,
             seq_length=text_config.max_position_embeddings,
-            max_position_embeddings=text_config.max_position_embeddings,
             language_max_sequence_length=text_config.max_position_embeddings,
             fp16=(model_dtype == torch.float16),
             bf16=(model_dtype == torch.bfloat16),

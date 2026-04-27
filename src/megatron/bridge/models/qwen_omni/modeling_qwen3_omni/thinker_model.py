@@ -271,9 +271,12 @@ class Qwen3OmniThinkerModel(MegatronModule):
         image_grid_thw: torch.LongTensor,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         target_dtype = getattr(self.visual, "dtype", pixel_values.dtype)
-        image_embeds, image_embeds_multiscale = self.visual(
-            pixel_values.to(dtype=target_dtype), grid_thw=image_grid_thw
-        )
+        visual_output = self.visual(pixel_values.to(dtype=target_dtype), grid_thw=image_grid_thw)
+        if isinstance(visual_output, tuple):
+            image_embeds, image_embeds_multiscale = visual_output
+        else:
+            image_embeds = visual_output.pooler_output
+            image_embeds_multiscale = visual_output.deepstack_features
         return image_embeds, list(image_embeds_multiscale)
 
     def get_video_features(
@@ -282,9 +285,12 @@ class Qwen3OmniThinkerModel(MegatronModule):
         video_grid_thw: torch.LongTensor,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         target_dtype = getattr(self.visual, "dtype", pixel_values_videos.dtype)
-        video_embeds, video_embeds_multiscale = self.visual(
-            pixel_values_videos.to(dtype=target_dtype), grid_thw=video_grid_thw
-        )
+        visual_output = self.visual(pixel_values_videos.to(dtype=target_dtype), grid_thw=video_grid_thw)
+        if isinstance(visual_output, tuple):
+            video_embeds, video_embeds_multiscale = visual_output
+        else:
+            video_embeds = visual_output.pooler_output
+            video_embeds_multiscale = visual_output.deepstack_features
         return video_embeds, list(video_embeds_multiscale)
 
     def get_audio_features(
